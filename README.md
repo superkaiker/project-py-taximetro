@@ -14,16 +14,16 @@
 
 TaxiTech Solutions es una aplicación de taxímetro digital desarrollada en Python para gestionar carreras, calcular tarifas, conservar el historial de servicios y facilitar la supervisión del sistema.
 
-El proyecto evoluciona desde una primera versión funcional de consola hasta una arquitectura modular con interfaz gráfica, autenticación, API REST, base de datos relacional y despliegue mediante Docker.
+El proyecto evoluciona desde una primera versión funcional de consola hasta una arquitectura modular con interfaz gráfica, autenticación, API REST, persistencia de datos y despliegue mediante Docker.
 
 ## 2. Tarifas
 
 | Estado del vehículo | Tarifa |
 |---|---:|
-| Parado o velocidad inferior a 20 km/h | 0,02 €/segundo |
+| Parado | 0,02 €/segundo |
 | En movimiento | 0,05 €/segundo |
 
-Las tarifas se configuran externamente mediante `config.json`.
+Las tarifas se configuran externamente mediante `config.json`. El cambio entre estados se realiza desde las interfaces disponibles; el proyecto no utiliza un sensor de velocidad.
 
 ## 3. Desarrollo por fases
 
@@ -59,12 +59,12 @@ Las tarifas se configuran externamente mediante `config.json`.
 
 ### Fase 4. Preparación para producción
 
-- Base de datos relacional SQLite.
+- Base de datos relacional SQLite para la API.
 - API REST desarrollada con FastAPI.
-- Panel web de administración.
-- Migración del historial JSON a SQLite.
+- Panel web de administración del historial.
+- Migración inicial del historial JSON a SQLite.
 - Despliegue mediante Docker Compose.
-- Persistencia de datos mediante volúmenes Docker.
+- Persistencia de datos mediante montajes de directorios del anfitrión.
 
 **Estado: implementada y verificada funcionalmente.**
 
@@ -79,7 +79,7 @@ Las tarifas se configuran externamente mediante `config.json`.
 - HTML y JavaScript.
 - Docker y Docker Compose.
 - Git y GitHub.
-- pytest.
+- unittest (pruebas automatizadas).
 
 ## 5. Estructura del proyecto
 
@@ -127,7 +127,7 @@ project-py-taximetro/
     └── taximetro.log
 ```
 
-Los directorios `data/` y `logs/` contienen información persistente y se excluyen del control de versiones.
+Los directorios `data/` y `logs/` contienen información persistente y se excluyen del control de versiones. Se crean o utilizan durante la ejecución.
 
 ## 6. Instalación y ejecución local
 
@@ -158,22 +158,30 @@ pip install -r requirements.txt
 
 ### Ejecutar la aplicación
 
-Consola:
+Interfaz gráfica (por defecto):
 
 ```powershell
 python .\main.py
 ```
 
-Interfaz gráfica:
+Consola:
 
 ```powershell
-python .\interfaces\grafica.py
+python .\main.py --consola
 ```
 
 API REST:
 
 ```powershell
 uvicorn api:app --reload
+```
+
+### Ejecutar las pruebas
+
+Las pruebas están escritas con el módulo `unittest`, incluido en Python:
+
+```powershell
+python -m unittest discover -s tests -v
 ```
 
 ## 7. API REST
@@ -188,7 +196,7 @@ La API permite gestionar carreras y consultar el historial.
 | POST | `/api/carreras/finalizar` | Finalizar y guardar carrera |
 | GET | `/api/carreras` | Consultar historial |
 
-Las operaciones de gestión de carreras y consulta del historial están protegidas mediante autenticación HTTP Basic.
+Las operaciones de gestión de carreras y consulta del historial están protegidas mediante autenticación HTTP Basic. El endpoint `/health` es público para facilitar la comprobación del servicio. El panel web (`/admin`) entrega la página y solicita credenciales cuando se consulta el historial protegido.
 
 ### Documentación interactiva
 
@@ -201,9 +209,12 @@ Con el servidor iniciado:
 
 ## 8. Persistencia de datos
 
-El sistema utiliza SQLite como base de datos relacional para conservar las carreras finalizadas.
+El proyecto utiliza dos mecanismos de persistencia según la interfaz:
 
-La aplicación inicializa la base de datos y permite migrar los registros históricos almacenados previamente en JSON.
+- **Consola y gráfica:** almacenan y consultan el historial en `data/historial.json`.
+- **API:** utiliza SQLite, en `data/taxitech.db`, para guardar y consultar las carreras.
+
+Al iniciar la API, se inicializa SQLite y se intenta migrar el historial JSON existente. Esta migración se realiza como parte del arranque de la API. Después de la migración, la API trabaja con SQLite; las interfaces de consola y gráfica continúan trabajando con JSON.
 
 Cada carrera conserva:
 
@@ -211,7 +222,7 @@ Cada carrera conserva:
 - Duración en segundos.
 - Importe calculado en euros.
 
-El proyecto mantiene también el historial JSON original como fuente de migración.
+El archivo JSON original se conserva como historial de las interfaces de escritorio y como fuente de la migración inicial de la API. Los historiales de ambas vías no se sincronizan automáticamente después de esa migración.
 
 ## 9. Sistema de logs
 
@@ -221,17 +232,11 @@ Los registros de operación se almacenan en:
 logs/taximetro.log
 ```
 
-Se registran eventos como:
-
-- Inicio y parada del servicio.
-- Migración de datos.
-- Cambios de estado.
-- Finalización de carreras.
-- Errores durante las operaciones.
+Se registran eventos de operación y errores, incluyendo el inicio del servicio y las operaciones de persistencia.
 
 ## 10. Despliegue con Docker
 
-Docker Compose permite construir y ejecutar el servicio con un único comando.
+Docker Compose permite construir y ejecutar la API con un único comando.
 
 ### Iniciar la aplicación
 
@@ -263,44 +268,49 @@ docker compose restart
 docker compose down
 ```
 
-Los directorios `data/` y `logs/` se montan como volúmenes persistentes para conservar la información entre reinicios del contenedor.
+El archivo `compose.yaml` monta `./data` en `/app/data` y `./logs` en `/app/logs`. Son montajes de directorios del anfitrión (bind mounts), no volúmenes Docker nombrados. Permiten conservar los datos y logs del proyecto al reiniciar o recrear el contenedor.
 
 ## 11. Pruebas automatizadas
 
-El proyecto dispone de pruebas automatizadas mediante pytest.
+Las pruebas automatizadas están implementadas con `unittest`.
 
 Ejecución:
 
 ```powershell
-python -m pytest -q
+python -m unittest discover -s tests -v
 ```
 
-**Último resultado verificado: 26 pruebas superadas.**
+**Último resultado ejecutado y verificado: 26 pruebas superadas.**
 
 ```text
-26 passed in 1.35s
+Ran 26 tests
+OK
 ```
 
-También se han realizado pruebas funcionales de la API y del despliegue Docker, incluyendo:
+Las pruebas cubren, entre otros aspectos:
 
-- Inicio y finalización de carreras.
-- Validación de estados.
-- Control de carreras activas.
-- Persistencia de registros en SQLite.
-- Consulta del historial mediante API.
-- Acceso autenticado al panel web.
-- Reinicio del contenedor conservando los datos.
+- Cálculo de tarifas en parado y movimiento.
+- Cambios de estado y estados inválidos.
+- Independencia y encadenamiento de carreras.
+- Gestión de una carrera activa en el taxímetro.
+- Guardado y formato JSON del historial.
+- Configuración ausente o con valores inválidos.
+- Creación y verificación de credenciales.
+
+También se realizaron pruebas funcionales de la API y del despliegue Docker, incluyendo el inicio, cambio de estado y finalización de una carrera, consulta del historial y comprobación de la persistencia tras reiniciar el contenedor.
 
 ## 12. Demostración funcional
 
-Durante las pruebas de producción local se verificó:
+Durante la prueba funcional del despliegue Docker se verificó:
 
-- Servicio Docker operativo en el puerto 8000.
+- Servicio operativo en el puerto 8000.
 - API REST accesible.
 - Panel web de administración operativo.
-- 24 carreras recuperadas desde el historial.
-- Última carrera registrada con un importe de 10,38 €.
+- Inicio, cambio de estado y finalización de una carrera mediante la API.
+- Registro de la carrera en SQLite y consulta posterior del historial.
 - Persistencia del historial después de reiniciar el contenedor.
+
+En la última demostración registrada, la carrera finalizada tenía un importe de 7,38 € y figuraba en el historial después del reinicio del contenedor.
 
 ## 13. Entregables
 
